@@ -19,7 +19,7 @@ function gpu_NLSE_BG(ω,input_field,β0,β1,β2,β3,β4,ω_REF,distance,nt,step_
     #β2 being the Group-velocity dispersion (GVD)
     #ω_REF is the reference frequency (for the Taylor decomposition)
     ##and for now    MUST   be equal to the Bragg frequency (easier formulation)
-
+    ω_Bragg=ω_REF;
     #distance (in m) is the propagation length in the waveguide
     #nt is your number of temporal points in the temporal wndow (also number of spectral points in the spectral one)
     #step_num is the number of step in the propagation direction
