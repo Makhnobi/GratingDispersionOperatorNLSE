@@ -37,9 +37,13 @@ function gpu_NLSE_BG(ω,input_field,β0,β1,β2,β3,β4,ω_REF,distance,nt,step_
     #functino to retrieve wavevector from Taylor coefficients
     fct_β=x->β0.+β1.*x.+β2.*x.^2 ./2 .+β3.*x.^3 ./6 .+β4.*x.^4 ./24;
     δz = distance/step_num; # step size in z
-    
-    #the grating dispersion operator
-    df=(q,d,z)->q.*(d.*cos.(q*z).-im*q.*sin.(q*z))./(q.*cos.(q*z).-im*d.*sin.(q*z));#q
+
+    #function to build the exact dispersion operator
+    refl_coeff=(omega,kappa,delta,q)->im.*kappa.*sin.(q*distance)./(q.*cos.(q.*distance)-im*delta.*sin.(q.*distance)); #q redundant but allow for a single computation of square root
+    df=(q,d,z,kappa,refl_coeff)->q.*(im*(d.+refl_coeff.*kappa).*cos.(q*z).-q.*sin.(q*z))./(q.*cos.(q*z).+im*(d.+refl_coeff.*kappa).*sin.(q*z));#q
+        
+    #for the approximate grating dispersion operator (derived using transfer matrix method and assumption "no incident light in each sub-grating")
+    #df=(q,d,z)->q.*(d.*cos.(q*z).-im*q.*sin.(q*z))./(q.*cos.(q*z).-im*d.*sin.(q*z));#q
     
     #making everything work on GPU:    
     ω_gpu=CUDA.CuArray{Float32}(undef,nt);
@@ -60,7 +64,12 @@ function gpu_NLSE_BG(ω,input_field,β0,β1,β2,β3,β4,ω_REF,distance,nt,step_
         @. κ_nn_eval=ω*c1/c;
         @. q_nn_eval=sqrt(ComplexF32(δ_nn_eval^2 -κ_nn_eval^2));      
         @. q_nn_eval=q_nn_eval;
-        dispersion = z -> exp.(im.*δz.*(df(q_nn_eval,δ_nn_eval,z).-β1*ω_β));
+        #exact dispersion operator
+        rg=refl_coeff(ω_gpu,κ_nn_eval,δ_nn_eval,q_nn_eval);
+        dispersion = z -> exp.(δz.*(df(q_nn_eval,δ_nn_eval,z,κ_nn_eval,rg).-im*β1*ω_β));
+
+        #approximated dispersion operator using the transfer matrix standart formalism (i.e. no incident light from the end of each subsection)
+        #dispersion = z -> exp.(im.*δz.*(df(q_nn_eval,δ_nn_eval,z).-β1*ω_β));
 
         #wrong dispersion operator from westbrook 2006 below:
         #f=(q,d,z)-> -im*log.(im*q./(im*q.*cos.(q*z).+d.*sin.(q*z)));
