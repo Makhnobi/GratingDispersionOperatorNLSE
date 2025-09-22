@@ -257,4 +257,162 @@ fig
 =#
 
 
+#=
+#to create a very nice 2D plot comparing waveguide with grating (see figure in the repository)
+#WARNING : time consuming ! (~5h needed with a RTX 2060)
+
+#parameters
+
+vecteur_λ4_zoom=LinRange(1230,1430,101);
+vecteur_λ1_zoom=LinRange(1545,1555,501);λ2=630.0;
+(β0_ssf,β1_ssf,β2_ssf,β3_ssf,β4_ssf)=(7.221901676788411e6, 7.103586631031164e-9, -3.217220630326691e-25, 4.630948732894057e-40, -1.7966102300411237e-55)
+ω_REF=1.2172927633521992e15;Λ_µm=0.435;
+δn1=1.0*2.245e-4;nt=2^17;nz=256;L=1*1e-2; 
+long=length(vecteur_λ1_zoom);
+long2=length(vecteur_λ4_zoom);
+eff_simu_bg=zeros(long);eff_simu_bg2=zeros(long);
+eff_simu_wg=zeros(long);eff_simu_wg2=zeros(long); #faire 4 fichiers
+λ_start=500; λ_stop=2100; #600-2100    #1545-1552
+ω=LinRange(2e9*pi*c/λ_stop,2e9*pi*c/λ_start,nt);
+U1=1*sqrt(81/2);U2=1*sqrt(1e-5);U3=0*sqrt(1e-1);U4=1*sqrt(81/2);#sqrt amplitude temporelle de chaque composante 1=1*sqrt(81/1);U2=1*sqrt(0.1);U3=0*sqrt(5);U4=1*sqrt(81/1);
+Amplitudes=[U1;U2;U3;U4];
+t_pulse=[80000;8000;8000;80000];
+
+#single check to be sure the code works
+(i_f,i_t,A1t,A2t,A3t,A4t)=input_pulse(ω,1545.38,630,λ3,1368,t_pulse,Amplitudes;f1=gauss,f4=gauss,f3=gauss,noise=1);
+(γ,Dispersion,uu_3dgpu,spect_3dgpu)=gpu_NLSE_BG(ω,i_f,β0_ssf,β1_ssf,β2_ssf,β3_ssf,β4_ssf,ω_REF,wg_length,nt,nz,δn1,Λ_µm;isgrating=true,Aeff=1e-12);
+spect_3dg=Array(spect_3dgpu);uu_3dg=Array(uu_3dgpu);
+_,ind_signal=findmin(abs.(ω.-omega(λ2)));λ1=1545.38;λ4=1368;    
+        if λ1<=λ4 #for user that wants a very wide scanning range
+            _,ind_idler=findmin(abs.(ω.-(omega(λ1)+omega(λ2)-omega(λ4))));
+            _,ind_idler2=findmin(abs.(ω.-(omega(λ4)+omega(λ2)-omega(λ1))));
+        else
+            _,ind_idler=findmin(abs.(ω.-(omega(λ4)+omega(λ2)-omega(λ1))));
+            _,ind_idler2=findmin(abs.(ω.-(omega(λ1)+omega(λ2)-omega(λ4))));
+        end
+abs2(spect_3dg[ind_idler]/i_f[ind_signal])
+abs2(spect_3dg[ind_idler2]/i_f[ind_signal])
+abs2(spect_wg[ind_idler]/i_f[ind_signal])
+abs2(spect_wg[ind_idler2]/i_f[ind_signal])
+# the end of the single check
+
+#where you want to produce the file
+chemin="D:/put_your_path_here";#change me !
+name="put_your_filename_here";#change me !
+format=".txt"; nom=chemin*name*format;
+txt_out=open(nom,"w")
+
+#1+1 #safety to not launch accidentaly if needed
+
+#the loop that constructs the file
+for jjj = 1:long2
+    λ4=vecteur_λ4_zoom[jjj];
+    for iii=1:long
+        λ1=vecteur_λ1_zoom[iii];
+
+        (i_f,i_t,A1t,A2t,A3t,A4t)=input_pulse(ω,λ1,λ2,λ3,λ4,t_pulse,Amplitudes;f1=gauss,f4=gauss,f3=gauss,noise=1);
+
+## solve NLSE in grating
+        (γ,Dispersion,uu_3dgpu,spect_3dgpu)=gpu_NLSE_BG(ω,i_f,β0_ssf,β1_ssf,β2_ssf,β3_ssf,β4_ssf,ω_REF,L,nt,nz,δn1,Λ_µm;isgrating=true,Aeff=1e-12);
+        spect_3dg=Array(spect_3dgpu);uu_3dg=Array(uu_3dgpu);
+## in equivalent waveguide
+        (γ,Dispersion,uu_3wgpu,spect_3wgpu)=gpu_NLSE_BG(ω,i_f,β0_ssf,β1_ssf,β2_ssf,β3_ssf,β4_ssf,ω_REF,L,nt,nz,δn1,Λ_µm;isgrating=false,Aeff=1e-12);
+        spect_wg=Array(spect_3wgpu);uu_wg=Array(uu_3dgpu);
+
+        _,ind_signal=findmin(abs.(ω.-omega(λ2)));
+        if λ1<=λ4
+            _,ind_idler=findmin(abs.(ω.-(omega(λ1)+omega(λ2)-omega(λ4))));
+            _,ind_idler2=findmin(abs.(ω.-(omega(λ4)+omega(λ2)-omega(λ1))));
+        else
+            _,ind_idler=findmin(abs.(ω.-(omega(λ4)+omega(λ2)-omega(λ1))));
+            _,ind_idler2=findmin(abs.(ω.-(omega(λ1)+omega(λ2)-omega(λ4))));
+        end
+        eff_simu_bg[iii]=abs2(spect_3dg[ind_idler]/i_f[ind_signal]);
+        eff_simu_bg2[iii]=abs2(spect_3dg[ind_idler2]/i_f[ind_signal]);
+        eff_simu_wg[iii]=abs2(spect_wg[ind_idler]/i_f[ind_signal]);
+        eff_simu_wg2[iii]=abs2(spect_wg[ind_idler2]/i_f[ind_signal]);
+        println(10000*jjj+iii)
+        if eff_simu_bg[iii]== NaN 
+            break
+        end
+        if eff_simu_bg[iii]>1e6 
+            break
+        end
+    end
+
+    
+    #println(txt_out,λ1_v);
+#println(txt_out,"");
+    println(txt_out,eff_simu_bg);
+    println(txt_out,eff_simu_bg2);
+#println(txt_out,"");
+    println(txt_out,eff_simu_wg);
+    println(txt_out,eff_simu_wg2);
+end
+close(txt_out) #very important to run before using modifying the file.
+
+#once the file is written, open the text editor,
+#in windows do ctrl + h and replace each "," with " " to use the following code
+
+#display the nice picture
+
+names3="put_your_file_name";
+lbd1=LinRange(1545,1555,501);
+lbd2=LinRange(1230,1430,101);
+type=".txt";
+chemin = "D:/put_your_path;
+f=open(chemin,"r");
+lines = readlines(f);
+close(f)
+nnn=length(lbd1);mmm=length(lbd2)
+eff_wg=zeros(mmm,nnn);eff_bg=zeros(mmm,nnn);eff_wg2=zeros(mmm,nnn);eff_bg2=zeros(mmm,nnn);
+compteur=1;
+for jjj = 0:mmm-1
+    for iii =1:4
+        zizi=parse.(Float64, split(lines[4*(jjj)+iii][2:end-1]));
+        if mod(iii,4) ==1
+            eff_bg[compteur,:]=zizi;
+        end
+        if mod(iii,4) ==2
+            eff_bg2[compteur,:]=zizi;
+        end
+        if mod(iii,4) ==3
+            eff_wg[compteur,:]=zizi;
+        end
+        if mod(iii,4) ==0
+            eff_wg2[compteur,:]=zizi;
+        end
+    end
+    compteur=compteur+1;
+end
+for iii=1:mmm
+    for jjj=1:nnn
+        if eff_wg2[iii,jjj]>1
+            eff_wg2[iii,jjj]=0.5;
+        end
+        if eff_bg2[iii,jjj]>1
+            eff_bg2[iii,jjj]=0.5;
+        end
+    end
+end
+compteur=1;
+#matrix[1,:] = ligne 1 all column = ligne 1 ; XxY matrix = X lines Y columns
+cmctr=cgrad([:lightblue,:blue,:darkblue,:darkred,:red,:yellow],[0.0,0.3,0.9,0.91,0.95,1.0]);
+fig = Figure(; resolution=(1000, 500),figure_padding=30,fontsize=22);
+CairoMakie.contourf!(Axis(fig[1,1],xlabel = rich("λ",subscript("1"),"(nm)"), ylabel = rich("λ",subscript("2"),"(nm)"),title="a)",xlabelsize=22,ylabelsize=22,xticklabelsize=22,yticklabelsize=22),lbd1,lbd2,transpose(eff_wg2),colormap=cmctr,levels=20,xtickfontsize=16,ytickfontsize=16)
+CairoMakie.contourf!(Axis(fig[1,2],xlabel = rich("λ",subscript("1"),"(nm)"), ylabel = rich("λ",subscript("2"),"(nm)"),title="b)",xlabelsize=22,ylabelsize=22,xticklabelsize=22,yticklabelsize=22),lbd1,lbd2,transpose(eff_bg2),colormap=cmctr,xticks=1545:1555,levels=20,xtickfontsize=26,ytickfontsize=16)
+CairoMakie.vlines!([lambda(ω_REF)-0.163,lambda(ω_REF)+0.162],color=:black,linewidth=1)
+Colorbar(fig[2, 1:2],colormap=cmctr,ticks=0.00:0.1:1.00,tickformat="{:.1f}", label="conversion efficiency",vertical=false, flipaxis=false);
+fig
+
+
+#this exact code made the figure in the repository :)
+
+
+
+
+
+
+=#
+
 
